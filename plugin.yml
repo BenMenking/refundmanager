@@ -1,0 +1,8 @@
+name: RefundManager
+main: net.menking.alter_vue.refund.RefundPlugin
+version: 1.0.1
+author: Alter_Vue
+
+commands:
+  refund:
+    description: Manages refund

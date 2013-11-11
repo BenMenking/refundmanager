@@ -1,0 +1,14 @@
+database:
+  host: localhost
+  port: 3306
+  database: refunder
+  username: minecraft
+  password: notcomplex
+  table: death_records
+
+allow-drops: true
+
+ignore-worlds:
+ - pvpArena
+
+ 
