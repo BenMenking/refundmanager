@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import net.menking.alter_vue.utils.ItemStackPackage;
 
 import org.bukkit.Location;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -65,7 +66,7 @@ public class DatabaseManager {
 		s.executeUpdate(sql);
 	}
 	
-	public boolean hasRefund(Player player) {
+	public boolean hasRefund(OfflinePlayer player) {
 		String sql = "SELECT count(*) C FROM " + this.table + " WHERE player='" + player.getName() + "' AND "
 				+ "refundable = 1 and refunded is NULL";
 		
@@ -87,11 +88,12 @@ public class DatabaseManager {
 		return false;	
 	}
 	
-	public String[] getDeathInformation(Player player, int howMany) {
+	public String[] getDeathInformation(OfflinePlayer player, int howMany) {
 		ArrayList<String> msg = new ArrayList<String>();
 		
-		String sql = "SELECT id, deathmsg, tod, exp, refundable FROM " + this.table
-				+ " WHERE player='" + player.getName() + "' AND " + "refunded is NULL";
+		String sql = "select * from (SELECT id, deathmsg, tod, exp, refundable FROM " + this.table
+				+ " WHERE player='" + player.getName() + "' AND " + "refunded is NULL AND equipment <> '' "
+				+ " ORDER BY tod DESC LIMIT " + Integer.toString(howMany) + ") k order by k.tod asc";
 		
 		Statement s;
 		
@@ -101,8 +103,7 @@ public class DatabaseManager {
 			
 			while( rs.next() ) {
 				msg.add("[" + rs.getString("id") + "] " + (rs.getInt("refundable")==1?"* ":"") 
-						+ "reason: " + rs.getString("deathmsg") + "; xp: " + rs.getString("exp"));
-				
+						+ rs.getString("deathmsg") + " @ " + rs.getDate("tod").toString() + " with " + rs.getString("exp") + " XP");
 			}
 		
 			s.close();
@@ -116,7 +117,7 @@ public class DatabaseManager {
 		return null;		
 	}
 	
-	public boolean setRefundable(Player player, int recordId) {		
+	public boolean setRefundable(OfflinePlayer player, int recordId) {		
 		try {
 			Statement s;
 			s = db.createStatement();
@@ -145,7 +146,7 @@ public class DatabaseManager {
 		
 	}
 	
-	public ItemStack[] getCurrentRefund(Player player, boolean flagReceived) {
+	public Refund getCurrentRefund(OfflinePlayer player, boolean flagReceived) {
 		String sql = "SELECT * FROM " + this.table + " WHERE player='" + player.getName() + "' AND "
 				+ "refundable = 1 and refunded is NULL";
 		
@@ -157,14 +158,12 @@ public class DatabaseManager {
 			ResultSet rs = s.executeQuery(sql);
 			
 			if( rs.next() ) {
-				//plugin.getServer().getLogger().info("[Refund] DatabaseManager: '" + rs.getString("equipment") + "'");
 				String[] items = rs.getString("equipment").split("\\|");
 				ArrayList<ItemStack> itemArray = new ArrayList<ItemStack>();
 				
 				for( String item : items ) {
 					if( item == null ) continue;
 					
-					//plugin.getServer().getLogger().info("[Refund] DatabaseManager: '" + item + "'");
 					if( item.length() > 0 ) {
 						ItemStack is = ItemStackPackage.unpack(item);
 					
@@ -174,15 +173,18 @@ public class DatabaseManager {
 					}
 				}
 				
+				int exp = rs.getInt("exp");
+				Refund ref = new Refund(itemArray.toArray(new ItemStack[itemArray.size()]), exp);				
+				
 				rs.close();
 				
 				if( flagReceived ) {
-					sql = "UPDATE " + this.table + " SET refundable = 0 and refunded = now() WHERE player = '"
+					sql = "UPDATE " + this.table + " SET refundable = 0, refunded = now() WHERE player = '"
 							+ player.getName() + "' and refundable = 1 and refunded is NULL";
 					s.executeUpdate(sql);
 				}
 				
-				return itemArray.toArray(new ItemStack[itemArray.size()]);
+				return ref;
 			}
 			else {
 				return null;

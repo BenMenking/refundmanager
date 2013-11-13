@@ -159,15 +159,22 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					return true;
 				}				
 				
-				ItemStack[] items = db.getCurrentRefund(player, true);
+				Refund ref = db.getCurrentRefund(player, true);
+				
+				if( ref == null ) {
+					player.sendMessage(ChatColor.YELLOW + "An error occurred and unable to retrieve your refund." + ChatColor.RESET);
+					return true;					
+				}
 				
 				player.getInventory().clear();
 				
-				for(ItemStack is : items ) {
+				for(ItemStack is : ref.getItemStack() ) {
 					player.getInventory().addItem(is);
 				}
 				
-				player.sendMessage(ChatColor.GREEN + "Your inventory has been refunded!" + ChatColor.RESET);
+				//player.setTotalExperience(ref.getExp());
+				
+				player.sendMessage(ChatColor.GREEN + "Your inventory and experience have been refunded!" + ChatColor.RESET);
 			}
 			/** LIST **/
 			else if( args[0].equalsIgnoreCase("list") && sender.hasPermission("refund.user.list")) {
@@ -178,14 +185,14 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 
 				ArrayList<String> msg = new ArrayList<String>();
 				
-				ItemStack[] items = db.getCurrentRefund(player, false);
+				Refund ref = db.getCurrentRefund(player, false);
 				
-				if( items == null ) {
+				if( ref == null ) {
 					player.sendMessage(ChatColor.GREEN + "That's odd.  Could not retrieve the refund information." + ChatColor.RESET);
 					return true;					
 				}
 				
-				for(ItemStack is : items ) {
+				for(ItemStack is : ref.getItemStack() ) {
 					if( is == null ) continue;
 					
 					String[] frag = ItemStackPackage.toString(is);
@@ -197,9 +204,10 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 						}
 					}
 				}
-
-				player.sendMessage(msg.toArray(new String[msg.size()]));
 				
+				msg.add("Experience: " + Integer.toString(ref.getExp()));
+				
+				player.sendMessage(msg.toArray(new String[msg.size()]));				
 			}
 			/** DECLINE **/
 			else if( args[0].equalsIgnoreCase("decline") && sender.hasPermission("refund.user.decline")) {
@@ -213,6 +221,7 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					return true;					
 				}
 				// throw away the result
+				Integer i = new Integer(0);
 				db.getCurrentRefund(player, true);
 				
 				player.sendMessage(ChatColor.GREEN + "You declined the refund.  Thank you!" + ChatColor.RESET);
@@ -237,14 +246,18 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					return true;
 				}
 				
-				String[] msg = db.getDeathInformation((Player)target, (args.length==3?Integer.parseInt(args[2]):2));
+				String[] msg = db.getDeathInformation(target, (args.length==3?Integer.parseInt(args[2]):2));
 				
-				player.sendMessage(msg);
+				if( msg.length == 0 ) {
+					player.sendMessage(ChatColor.YELLOW + "Player '" + args[1] + "' does not have any records available." + ChatColor.RESET);
+				}
+				else {				
+					player.sendMessage(msg);
+				}
 			}
 			/** REFUND **/
 			else if( args[0].equalsIgnoreCase("refund") && sender.hasPermission("refund.admin.refund")) {
 				if( args.length != 3 ) {
-					//sender.sendMessage("args length = " + Integer.toString(args.length));
 					sender.sendMessage(refundHelpMsg(sender));
 					return true;					
 				}
