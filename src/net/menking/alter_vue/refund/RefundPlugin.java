@@ -31,6 +31,10 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 		
 		getServer().getPluginManager().registerEvents(this,  this);
 		
+		reload();
+	}
+	
+	private void reload() {
 		try {
 			db = new DatabaseManager(this, getConfig().getString("database.host"), getConfig().getString("database.port"),
 				getConfig().getString("database.username"), getConfig().getString("database.password"), 
@@ -47,8 +51,16 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 		try {
 			db.verifySchema();
 			
-			control = new HashMap<String, BukkitTask>();
-			ignoredWorlds = new ArrayList<String>();
+			if( control == null ) {
+				control = new HashMap<String, BukkitTask>();
+			}
+			
+			if( ignoredWorlds == null ) {
+				ignoredWorlds = new ArrayList<String>();
+			}
+			else {
+				ignoredWorlds.clear();
+			}
 			
 			ignoredWorlds = (ArrayList<String>)getConfig().getStringList("ignored-worlds");
 		} catch (SQLException e) {
@@ -269,7 +281,7 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					return true;
 				}
 				
-				if( db.setRefundable((Player)target, Integer.parseInt(args[2]) ) ) {
+				if( db.setRefundable(target, Integer.parseInt(args[2]) ) ) {
 					player.sendMessage(ChatColor.GREEN + "Player will be given notice that refund is available" + ChatColor.RESET);
 					
 					if( target.isOnline() ) {
@@ -279,6 +291,12 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 				else {
 					player.sendMessage(ChatColor.YELLOW + "Player may already have a refund waiting.  Could not mark refund" + ChatColor.RESET);
 				}
+			}
+			/** RELOAD **/
+			else if( args[0].equalsIgnoreCase("reload") && sender.hasPermission("refund.admin.reload")) {
+				reload();
+				
+				sender.sendMessage(ChatColor.GOLD + "RefundManager configuration has been reloaded" + ChatColor.RESET);
 			}
 			else {
 				sender.sendMessage(refundHelpMsg(sender));
