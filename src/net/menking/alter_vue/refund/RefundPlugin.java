@@ -4,6 +4,8 @@ import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.HashMap;
 
+import net.menking.alter_vue.persistance.DataManager;
+import net.menking.alter_vue.persistance.DatabaseManager;
 import net.menking.alter_vue.utils.ItemStackPackage;
 
 import org.bukkit.ChatColor;
@@ -21,10 +23,11 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
 public class RefundPlugin extends JavaPlugin implements Listener {
-	private DatabaseManager db;
+	private DataManager db;
 	private static String header = "[RefundPlugin] ";
 	private HashMap<String, BukkitTask> control = null;
 	private ArrayList<String> ignoredWorlds = null;
+	private boolean debug = false;
 
 	@Override
 	public void onEnable() {
@@ -36,39 +39,50 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 	}
 	
 	private void reload() {
-		try {
-			db = new DatabaseManager(this, getConfig().getString("database.host"), getConfig().getString("database.port"),
-				getConfig().getString("database.username"), getConfig().getString("database.password"), 
-				getConfig().getString("database.database"), getConfig().getString("database.table"));
-		} catch (ClassNotFoundException e) {
-			getServer().getLogger().severe(RefundPlugin.header + "Could not find the database driver needed!  Disabling plugin");
-			getServer().getPluginManager().disablePlugin(this);
-		} catch (SQLException e) {
-			getServer().getLogger().severe(RefundPlugin.header + "SQL exception!  Disabling plugin and trace to follow");
-			getServer().getLogger().fine(e.toString());
-			getServer().getPluginManager().disablePlugin(this);			
+		if( getConfig().contains("debug") ) {
+			this.debug = getConfig().getBoolean("debug");
+		}
+		else {
+			getConfig().set("debug", false);
 		}
 		
-		try {
-			db.verifySchema();
-			
-			if( control == null ) {
-				control = new HashMap<String, BukkitTask>();
+		if( !getConfig().contains("persistance") ) {
+			// we have an older configuration
+			getConfig().set("persistance", "mysql");
+		}
+		
+		if( getConfig().getString("persistance").equalsIgnoreCase("mysql") ) {
+			try {
+				db = new DatabaseManager(this, getConfig().getString("database.host"), getConfig().getString("database.port"),
+						getConfig().getString("database.username"), getConfig().getString("database.password"), 
+						getConfig().getString("database.database"), getConfig().getString("database.table"));
+				this.debug("Data manager is running");
+			} catch (ClassNotFoundException e) {
+				getServer().getLogger().severe(RefundPlugin.header + "Could not find the database driver needed!  Disabling plugin");
+				getServer().getPluginManager().disablePlugin(this);
+			} catch (SQLException e) {
+				getServer().getLogger().severe(RefundPlugin.header + "SQL exception!  Disabling plugin and trace to follow");
+				getServer().getLogger().fine(e.toString());
+				getServer().getPluginManager().disablePlugin(this);			
 			}
-			
-			if( ignoredWorlds == null ) {
-				ignoredWorlds = new ArrayList<String>();
-			}
-			else {
-				ignoredWorlds.clear();
-			}
-			
-			ignoredWorlds = (ArrayList<String>)getConfig().getStringList("ignored-worlds");
-		} catch (SQLException e) {
-			getServer().getLogger().severe(RefundPlugin.header + "SQL exception  Disabling plugin, trace to follow:");
-			getServer().getLogger().fine(e.toString());
+		}
+		else {
+			getServer().getLogger().warning(RefundPlugin.header + "That type of persistance is not supported");
 			getServer().getPluginManager().disablePlugin(this);
 		}
+		
+		if( control == null ) {
+			control = new HashMap<String, BukkitTask>();
+		}
+		
+		if( ignoredWorlds == null ) {
+			ignoredWorlds = new ArrayList<String>();
+		}
+		else {
+			ignoredWorlds.clear();
+		}
+		
+		ignoredWorlds = (ArrayList<String>)getConfig().getStringList("ignored-worlds");
 	}
 	
 	@Override
@@ -110,13 +124,7 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 			items += json + "|";
 		}
 		
-		try {
-			// and insert the database record
-			//
-			db.recordDeath(event.getEntity(), event.getDeathMessage(), event.getEntity().getLocation(), items, event.getDroppedExp());
-		} catch (SQLException e) {
-			e.printStackTrace();
-		}
+		db.recordDeath(event.getEntity(), event.getDeathMessage(), event.getEntity().getLocation(), items, event.getDroppedExp());
 		
 		// if we don't allow drop, clear them
 		//
@@ -130,13 +138,8 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 	public void onPlayerLogin(PlayerLoginEvent event) {
 		Player player = event.getPlayer();
 		
-		try {
-			if( db.hasRefund(player ) ) {
-				nagPlayer(player);
-			}
-		} catch (SQLException e) {
-			this.getServer().getLogger().warning(RefundPlugin.header + " onPlayerLoginEvent(): " + e.getMessage());
-			e.printStackTrace();
+		if( db.hasRefund(player ) ) {
+			nagPlayer(player);
 		}
 	}
 	
@@ -172,24 +175,14 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					control.remove(player.getName());
 				}
 				
-				try {
-					if( !db.hasRefund(player ) ) {
-						player.sendMessage(ChatColor.YELLOW + "Sorry, you don't have any refunds available." + ChatColor.RESET);
-						return true;
-					}
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('accept')#hasRefund(): " + e.getMessage());
-					e.printStackTrace();
-				}				
-				
+				if( !db.hasRefund(player ) ) {
+					player.sendMessage(ChatColor.YELLOW + "Sorry, you don't have any refunds available." + ChatColor.RESET);
+					return true;
+				}
+							
 				Refund ref = null;
 				
-				try {
-					ref = db.getCurrentRefund(player, true);
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('accept')#getCurrentRefund(): " + e.getMessage());
-					e.printStackTrace();
-				}
+				ref = db.getCurrentRefund(player, true);
 				
 				if( ref == null ) {
 					player.sendMessage(ChatColor.YELLOW + "An error occurred and unable to retrieve your refund." + ChatColor.RESET);
@@ -208,25 +201,15 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 			}
 			/** LIST **/
 			else if( args[0].equalsIgnoreCase("list") && sender.hasPermission("refund.user.list")) {
-				try {
-					if( !db.hasRefund(player) ) {
-						player.sendMessage(ChatColor.YELLOW + "Sorry, you have no refunds available." + ChatColor.RESET);
-						return true;
-					}
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('list')#hasRefund(): " + e.getMessage());
-					e.printStackTrace();
+				if( !db.hasRefund(player) ) {
+					player.sendMessage(ChatColor.YELLOW + "Sorry, you have no refunds available." + ChatColor.RESET);
+					return true;
 				}
 
 				ArrayList<String> msg = new ArrayList<String>();
 				
 				Refund ref = null;
-				try {
-					ref = db.getCurrentRefund(player, false);
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('list')#getCurrentRefund(): " + e.getMessage());
-					e.printStackTrace();
-				}
+				ref = db.getCurrentRefund(player, false);
 				
 				if( ref == null ) {
 					player.sendMessage(ChatColor.GREEN + "That's odd.  Could not retrieve the refund information." + ChatColor.RESET);
@@ -258,23 +241,14 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					control.remove(player.getName());
 				}
 
-				try {
-					if( !db.hasRefund(player) ) {
-						player.sendMessage(ChatColor.YELLOW + "Sorry, you have no refunds available." + ChatColor.RESET);
-						return true;					
-					}
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('decline')#hasRefund(): " + e.getMessage());
-					e.printStackTrace();
+				if( !db.hasRefund(player) ) {
+					player.sendMessage(ChatColor.YELLOW + "Sorry, you have no refunds available." + ChatColor.RESET);
+					return true;					
 				}
+
 				// throw away the result
 
-				try {
-					db.getCurrentRefund(player, true);
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('decline')#getCurrentRefund(): " + e.getMessage());
-					e.printStackTrace();
-				}
+				db.getCurrentRefund(player, true);
 				
 				player.sendMessage(ChatColor.GREEN + "You declined the refund.  Thank you!" + ChatColor.RESET);
 			}
@@ -300,12 +274,7 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 				
 				String[] msg = null;
 				
-				try {
-					msg = db.getDeathInformation(target, (args.length==3?Integer.parseInt(args[2]):2));
-				} catch (NumberFormatException | SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('show')#getDeathInformation(): " + e.getMessage());
-					e.printStackTrace();
-				}
+				msg = db.getDeathInformation(target, (args.length==3?Integer.parseInt(args[2]):2));
 				
 				if( msg.length == 0 ) {
 					player.sendMessage(ChatColor.YELLOW + "Player '" + args[1] + "' does not have any records available." + ChatColor.RESET);
@@ -328,20 +297,15 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 					return true;
 				}
 				
-				try {
-					if( db.setRefundable(target, Integer.parseInt(args[2]) ) ) {
-						player.sendMessage(ChatColor.GREEN + "Player will be given notice that refund is available" + ChatColor.RESET);
-						
-						if( target.isOnline() ) {
-							nagPlayer((Player)target);
-						}
+				if( db.setRefundable(target, Integer.parseInt(args[2]) ) ) {
+					player.sendMessage(ChatColor.GREEN + "Player will be given notice that refund is available" + ChatColor.RESET);
+					
+					if( target.isOnline() ) {
+						nagPlayer((Player)target);
 					}
-					else {
-						player.sendMessage(ChatColor.YELLOW + "Player may already have a refund waiting.  Could not mark refund" + ChatColor.RESET);
-					}
-				} catch (NumberFormatException | SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('refund')#setRefundable(): " + e.getMessage());
-					e.printStackTrace();
+				}
+				else {
+					player.sendMessage(ChatColor.YELLOW + "Player may already have a refund waiting.  Could not mark refund" + ChatColor.RESET);
 				}
 			}
 			/** RELOAD **/
@@ -355,15 +319,10 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 				ArrayList<String> msg = new ArrayList<String>();
 				
 				Refund ref = null;
-				try {
-					ref = db.getCurrentRefund(Integer.parseInt(args[1]));
-				} catch (SQLException e) {
-					this.getServer().getLogger().warning(RefundPlugin.header + " onCommand('showitems')#getCurrentRefund(): " + e.getMessage());
-					e.printStackTrace();
-				}
+				ref = db.getCurrentRefund(Integer.parseInt(args[1]));
 				
 				if( ref == null ) {
-					player.sendMessage(ChatColor.GREEN + "That's odd.  Could not retrieve the refund information." + ChatColor.RESET);
+					player.sendMessage(ChatColor.GREEN + "That death record does not appear to be refundable." + ChatColor.RESET);
 					return true;					
 				}
 				
@@ -437,5 +396,11 @@ public class RefundPlugin extends JavaPlugin implements Listener {
 		String[] message = bucket.toArray(new String[bucket.size()]);
 		
 		return message;
+	}
+	
+	public void debug(String txt) {
+		if( this.debug ) {
+			this.getServer().getLogger().info("[REFUND DEBUG] " + txt);
+		}
 	}
 }

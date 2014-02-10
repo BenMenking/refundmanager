@@ -1,4 +1,4 @@
-package net.menking.alter_vue.refund;
+package net.menking.alter_vue.persistance;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 
+import net.menking.alter_vue.refund.Refund;
 import net.menking.alter_vue.utils.ItemStackPackage;
 
 import org.bukkit.Location;
@@ -15,9 +16,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 
-public class DatabaseManager {
+public class DatabaseManager extends DataManager {
 	protected Connection db;
-	private final JavaPlugin plugin;
 	private String url;
 	private String user;
 	private String pass;
@@ -25,7 +25,8 @@ public class DatabaseManager {
 
 	public DatabaseManager(JavaPlugin plugin, String host, String port, String user, 
 			String pass, String database, String table) throws ClassNotFoundException, SQLException {
-		this.plugin = plugin;
+		super(plugin);
+
 		Class.forName("com.mysql.jdbc.Driver");
 
 		this.url = "jdbc:mysql://" + host + ":" + port + "/" + database;
@@ -80,22 +81,31 @@ public class DatabaseManager {
 		}
 	}
 	
-	public void recordDeath(Player player, String deathMsg, Location loc, String items, int exp) throws SQLException {
+	public boolean recordDeath(Player player, String deathMsg, Location loc, String items, int exp) {
 		if( !verifyConnectivity() ) {
-			throw new SQLException("Could not connect to database.  Please check console for error message");
+			plugin.getServer().getLogger().warning("[RefundManager] Could not connect to database");
+			return false;
 		}
 		
-		String sql = "INSERT INTO " + this.table + " VALUES (null, '" + player.getName() + "', '" + deathMsg + "', NOW(), "
+		try {
+			String sql = "INSERT INTO " + this.table + " VALUES (null, '" + player.getName() + "', '" + deathMsg + "', NOW(), "
 				+ "'" + items + "', " + Integer.toString(exp) + ", 0, null, '" + loc.toString() + "')";
-		Statement s;
+			Statement s;
 
-		s = db.createStatement();
-		s.executeUpdate(sql);
+			s = db.createStatement();
+			s.executeUpdate(sql);
+			
+			return true;
+		} catch(SQLException e) {
+			plugin.getServer().getLogger().warning("[RefundManager] Issues running the recordDeath database query");
+			return false;
+		}
 	}
 	
-	public boolean hasRefund(OfflinePlayer player) throws SQLException {
+	public boolean hasRefund(OfflinePlayer player) {
 		if( !verifyConnectivity() ) {
-			throw new SQLException("Could not connect to database.  Please check console for error message");
+			plugin.getServer().getLogger().warning("[RefundManager] Could not connect to database");
+			return false;
 		}
 		
 		String sql = "SELECT count(*) C FROM " + this.table + " WHERE player='" + player.getName() + "' AND "
@@ -119,9 +129,10 @@ public class DatabaseManager {
 		return false;	
 	}
 	
-	public String[] getDeathInformation(OfflinePlayer player, int howMany) throws SQLException {
+	public String[] getDeathInformation(OfflinePlayer player, int howMany) {
 		if( !verifyConnectivity() ) {
-			throw new SQLException("Could not connect to database.  Please check console for error message");
+			plugin.getServer().getLogger().warning("[RefundManager] Could not connect to database");
+			return null;
 		}		
 		
 		ArrayList<String> msg = new ArrayList<String>();
@@ -147,14 +158,14 @@ public class DatabaseManager {
 			
 		} catch(SQLException e) {
 			e.printStackTrace();
-		}
-		
-		return null;		
+			return null;
+		}		
 	}
 	
-	public boolean setRefundable(OfflinePlayer player, int recordId) throws SQLException {		
+	public boolean setRefundable(OfflinePlayer player, int recordId) {		
 		if( !verifyConnectivity() ) {
-			throw new SQLException("Could not connect to database.  Please check console for error message");
+			plugin.getServer().getLogger().warning("[RefundManager] Could not connect to database");
+			return false;
 		}
 		
 		try {
@@ -185,9 +196,10 @@ public class DatabaseManager {
 		
 	}
 	
-	public Refund getCurrentRefund(OfflinePlayer player, boolean flagReceived) throws SQLException {
+	public Refund getCurrentRefund(OfflinePlayer player, boolean flagReceived) {
 		if( !verifyConnectivity() ) {
-			throw new SQLException("Could not connect to database.  Please check console for error message");
+			plugin.getServer().getLogger().warning("[RefundManager] Could not connect to database");
+			return null;
 		}
 		
 		String sql = "SELECT * FROM " + this.table + " WHERE player='" + player.getName() + "' AND "
@@ -238,13 +250,14 @@ public class DatabaseManager {
 		}
 	}
 	
-	public Refund getCurrentRefund(int id) throws SQLException {
+	public Refund getCurrentRefund(int id) {
 		if( !verifyConnectivity() ) {
-			throw new SQLException("Could not connect to database.  Please check console for error message");
+			plugin.getServer().getLogger().warning("[RefundManager] Could not connect to database");
+			return null;
 		}
 		
-		String sql = "SELECT * FROM " + this.table + " WHERE id=" + Integer.toString(id) + "' AND "
-				+ "refundable = 1 and refunded is NULL";
+		String sql = "SELECT * FROM " + this.table + " WHERE id=" + Integer.toString(id) + " AND "
+				+ " refunded is NULL";
 		
 		Statement s;
 		

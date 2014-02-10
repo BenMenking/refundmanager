@@ -1,3 +1,5 @@
+persistance: mysql
+
 database:
   host: localhost
   port: 3306
@@ -9,6 +11,6 @@ database:
 allow-drops: true
 
 ignore-worlds:
- - pvpArena
+- pvpArena
 
- 
+debug: false
